@@ -1,0 +1,2102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Financial Terminal | Bloomberg-Style Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0e14;
+  --panel-bg: #0d1220;
+  --border: #1e2535;
+  --text: #c5c9d0;
+  --accent: #4a9eff;
+  --pos: #2ecc71;
+  --neg: #e74c3c;
+  --muted: #666b78;
+  --header-bg: #080c12;
+  --hover-bg: #131929;
+  --tag-markets: #1a3a5c;
+  --tag-fintech: #1a3d2a;
+  --tag-crypto: #3d2a0a;
+  --tag-gcc: #2d1a3d;
+}
+html { scroll-behavior: smooth; overflow-x: hidden; }
+html, body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+body { display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; cursor: pointer; }
+input { font-family: inherit; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--panel-bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ============================================================
+   TICKER BAR
+   ============================================================ */
+#ticker-bar {
+  background: var(--header-bg);
+  border-bottom: 0.5px solid var(--border);
+  height: 30px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+#ticker-bar::before, #ticker-bar::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 40px;
+  z-index: 2;
+  pointer-events: none;
+}
+#ticker-bar::before { left: 0; background: linear-gradient(to right, var(--header-bg), transparent); }
+#ticker-bar::after { right: 0; background: linear-gradient(to left, var(--header-bg), transparent); }
+.ticker-label {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  z-index: 3;
+  white-space: nowrap;
+}
+.ticker-scroll-wrapper {
+  overflow: hidden;
+  flex: 1;
+  padding-left: 70px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.ticker-track {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  animation: ticker-scroll 60s linear infinite;
+  will-change: transform;
+}
+.ticker-track:hover { animation-play-state: paused; }
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px;
+  border-right: 0.5px solid var(--border);
+  height: 100%;
+  white-space: nowrap;
+}
+.ticker-sym { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0.5px; }
+.ticker-val { font-size: 11px; font-weight: 500; color: var(--text); }
+.ticker-chg { font-size: 10px; font-weight: 500; }
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+.neu { color: var(--muted); }
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+#nav-bar {
+  background: var(--header-bg);
+  border-bottom: 0.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  height: 36px;
+  flex-shrink: 0;
+  gap: 0;
+  padding: 0 4px;
+  overflow-x: auto;
+  position: sticky;
+  top: 30px;
+  z-index: 99;
+}
+.nav-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 0 14px;
+  height: 100%;
+  text-transform: uppercase;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-spacer { flex: 1; }
+.nav-search {
+  background: var(--panel-bg);
+  border: 0.5px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 10px;
+  width: 180px;
+  height: 24px;
+  outline: none;
+  border-radius: 2px;
+}
+.nav-search:focus { border-color: var(--accent); }
+.nav-search::placeholder { color: var(--muted); }
+.btn-refresh {
+  background: var(--panel-bg);
+  border: 0.5px solid var(--border);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 0 12px;
+  height: 24px;
+  margin-left: 8px;
+  border-radius: 2px;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-refresh:hover { background: var(--hover-bg); }
+.btn-refresh.spinning { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   MAIN CONTENT AREA — single scrollable panel grid
+   ============================================================ */
+#main {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  padding: 0;
+}
+
+/* ============================================================
+   PANELS
+   ============================================================ */
+.panel {
+  border: 0.5px solid var(--border);
+  background: var(--panel-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 600px;
+  scroll-margin-top: 68px; /* offset for sticky ticker + nav */
+}
+.panel-header {
+  background: var(--header-bg);
+  border-bottom: 0.5px solid var(--border);
+  padding: 0 12px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+.panel-badge {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+.badge-live { background: #0d2e1a; color: var(--pos); border: 0.5px solid var(--pos); }
+.badge-stale { background: #2e1a0d; color: #e67e22; border: 0.5px solid #e67e22; }
+.badge-loading { background: #0d1a2e; color: var(--accent); border: 0.5px solid var(--accent); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0;
+}
+.panel-subtitle {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  margin-left: auto;
+}
+
+/* ============================================================
+   DATA TABLES
+   ============================================================ */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 0.5px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--panel-bg);
+  z-index: 1;
+  white-space: nowrap;
+}
+.data-table th:first-child { text-align: left; }
+.data-table td {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.data-table td:first-child { text-align: left; }
+.data-table tbody tr { transition: background 0.1s; }
+.data-table tbody tr:hover { background: var(--hover-bg); cursor: pointer; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+/* ============================================================
+   WATCHLIST SPECIFICS
+   ============================================================ */
+.watchlist-add {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--border);
+  flex-shrink: 0;
+}
+.watchlist-input {
+  flex: 1;
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  padding: 5px 10px;
+  text-transform: uppercase;
+  outline: none;
+  border-radius: 2px;
+}
+.watchlist-input:focus { border-color: var(--accent); }
+.btn-add {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 5px 14px;
+  border-radius: 2px;
+  transition: opacity 0.15s;
+}
+.btn-add:hover { opacity: 0.8; }
+.btn-remove {
+  background: none;
+  border: none;
+  color: var(--neg);
+  font-size: 13px;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.btn-remove:hover { opacity: 1; }
+.sym-cell { font-weight: 700; font-size: 11px; }
+.name-cell { color: var(--muted); font-size: 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.price-cell { font-weight: 600; font-size: 12px; }
+.chg-cell { font-weight: 500; }
+
+/* Expandable row detail */
+.detail-row { display: none; }
+.detail-row.open { display: table-row; }
+.detail-card {
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: 2px;
+  padding: 10px 14px;
+  margin: 4px 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.detail-item label { display: block; font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px; }
+.detail-item span { font-size: 12px; font-weight: 500; color: var(--text); }
+
+/* ============================================================
+   MACRO TILES
+   ============================================================ */
+.macro-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.macro-tile {
+  background: var(--panel-bg);
+  padding: 10px 12px;
+  border-left: 3px solid transparent;
+  transition: background 0.15s;
+}
+.macro-tile:hover { background: var(--hover-bg); }
+.macro-tile.border-pos { border-left-color: var(--pos); }
+.macro-tile.border-neg { border-left-color: var(--neg); }
+.macro-tile.border-warn { border-left-color: #e67e22; }
+.macro-tile .tile-label { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+.macro-tile .tile-value { font-size: 20px; font-weight: 600; color: var(--text); line-height: 1; margin-bottom: 3px; }
+.macro-tile .tile-change { font-size: 10px; }
+.macro-tile .tile-status { font-size: 9px; color: var(--muted); letter-spacing: 0.5px; margin-top: 2px; }
+.macro-chart-wrap { flex: 1; padding: 8px; min-height: 160px; position: relative; }
+.macro-chart-wrap canvas { width: 100% !important; }
+
+/* ============================================================
+   CRYPTO PANEL
+   ============================================================ */
+.crypto-section-header {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 8px 10px 4px;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--header-bg);
+}
+.peg-badge {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+.peg-ok { background: #0d2e1a; color: var(--pos); }
+.peg-warn { background: #2e0d0d; color: var(--neg); }
+
+/* ============================================================
+   NEWS PANEL
+   ============================================================ */
+.news-filters {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--border);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.filter-btn {
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  text-transform: uppercase;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.filter-btn:hover, .filter-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+.news-item {
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.news-item:hover { background: var(--hover-bg); }
+.news-item:last-child { border-bottom: none; }
+.news-headline {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+.news-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.news-source-tag {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+.tag-markets { background: var(--tag-markets); color: #6ab0ff; }
+.tag-fintech { background: var(--tag-fintech); color: #4dbb77; }
+.tag-crypto { background: var(--tag-crypto); color: #e0a040; }
+.tag-gcc { background: var(--tag-gcc); color: #b07ae0; }
+.news-time { font-size: 9px; color: var(--muted); }
+.news-dubai-time { font-size: 9px; color: var(--muted); }
+.news-hidden { display: none; }
+
+/* ============================================================
+   FX PANEL
+   ============================================================ */
+.pegged-badge {
+  font-size: 8px;
+  font-weight: 700;
+  color: #e67e22;
+  background: #2e1a05;
+  border: 0.5px solid #e67e22;
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================
+   BONDS PANEL
+   ============================================================ */
+.yield-chart-wrap {
+  padding: 10px;
+  flex: 1;
+  min-height: 160px;
+  position: relative;
+}
+.spread-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+.spread-normal { background: #0d2e1a; color: var(--pos); }
+.spread-inverted { background: #2e0d0d; color: var(--neg); }
+
+/* ============================================================
+   STATUS BAR
+   ============================================================ */
+#status-bar {
+  background: var(--header-bg);
+  border-top: 0.5px solid var(--border);
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 16px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.status-item span { color: var(--text); }
+.status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pos);
+  animation: blink 2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.status-spacer { flex: 1; }
+
+/* ============================================================
+   MISC UTILITIES
+   ============================================================ */
+.loading-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.section-divider {
+  height: 0.5px;
+  background: var(--border);
+  margin: 0;
+}
+.no-data {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.fred-notice {
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: 2px;
+  margin: 8px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.6;
+}
+.fred-notice a { color: var(--accent); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 1100px) {
+  #main { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 680px) {
+  #main { grid-template-columns: 1fr; }
+  .macro-tiles { grid-template-columns: repeat(2, 1fr); }
+  .detail-card { grid-template-columns: repeat(2, 1fr); }
+  .nav-search { width: 110px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     TICKER BAR
+     ============================================================ -->
+<div id="ticker-bar">
+  <div class="ticker-label">LIVE</div>
+  <div class="ticker-scroll-wrapper">
+    <div class="ticker-track" id="ticker-track">
+      <div class="ticker-item">
+        <span class="ticker-sym">LOADING</span>
+        <span class="ticker-val">—</span>
+        <span class="ticker-chg neu">0.00%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     NAVIGATION
+     ============================================================ -->
+<div id="nav-bar">
+  <button class="nav-tab" data-anchor="panel-watchlist">Watchlist</button>
+  <button class="nav-tab" data-anchor="panel-macro">Markets</button>
+  <button class="nav-tab" data-anchor="panel-news">News Wire</button>
+  <button class="nav-tab" data-anchor="panel-crypto">Crypto</button>
+  <button class="nav-tab" data-anchor="panel-fx">FX / Rates</button>
+  <button class="nav-tab" data-anchor="panel-bonds">Bonds</button>
+  <button class="nav-tab" data-anchor="panel-news" data-filter="fintech">Fintech</button>
+  <button class="nav-tab" data-anchor="panel-news" data-filter="gcc">GCC</button>
+  <div class="nav-spacer"></div>
+  <input class="nav-search" id="news-search" type="text" placeholder="SEARCH NEWS...">
+  <button class="btn-refresh" id="btn-refresh">↻ REFRESH</button>
+</div>
+
+<!-- ============================================================
+     MAIN CONTENT — all 6 panels in a responsive grid
+     ============================================================ -->
+<div id="main">
+
+  <!-- ① WATCHLIST -->
+  <div class="panel" id="panel-watchlist">
+    <div class="panel-header">
+      <span class="panel-title">Watchlist</span>
+      <span class="panel-badge badge-loading" id="badge-watchlist">LOADING</span>
+      <span class="panel-subtitle">EQUITIES + CRYPTO</span>
+    </div>
+    <div class="watchlist-add">
+      <input class="watchlist-input" id="watchlist-input" type="text" placeholder="ADD SYMBOL (e.g. AAPL, BTC)">
+      <button class="btn-add" id="watchlist-add-btn">+ ADD</button>
+    </div>
+    <div class="panel-body" id="watchlist-body">
+      <div class="loading-placeholder">LOADING WATCHLIST...</div>
+    </div>
+  </div>
+
+  <!-- ② MACRO DASHBOARD -->
+  <div class="panel" id="panel-macro">
+    <div class="panel-header">
+      <span class="panel-title">Macro Dashboard</span>
+      <span class="panel-badge badge-loading" id="badge-macro">LOADING</span>
+      <span class="panel-subtitle">MARKET OVERVIEW</span>
+    </div>
+    <div class="panel-body" id="macro-body" style="display:flex; flex-direction:column; padding:0;">
+      <div class="macro-tiles" id="macro-tiles">
+        <div class="macro-tile" id="tile-spx"><div class="tile-label">S&P 500</div><div class="tile-value">—</div><div class="tile-change neu">—</div></div>
+        <div class="macro-tile" id="tile-vix"><div class="tile-label">VIX</div><div class="tile-value">—</div><div class="tile-change neu">—</div><div class="tile-status">—</div></div>
+        <div class="macro-tile" id="tile-dxy"><div class="tile-label">DXY</div><div class="tile-value">—</div><div class="tile-change neu">—</div></div>
+        <div class="macro-tile" id="tile-10y"><div class="tile-label">10Y UST</div><div class="tile-value">—</div><div class="tile-change neu">—</div></div>
+        <div class="macro-tile" id="tile-fed"><div class="tile-label">Fed Funds</div><div class="tile-value">—</div><div class="tile-change neu">—</div><div class="tile-status">—</div></div>
+        <div class="macro-tile" id="tile-cpi"><div class="tile-label">US CPI YoY</div><div class="tile-value">—</div><div class="tile-change neu">—</div><div class="tile-status">—</div></div>
+      </div>
+      <div class="macro-chart-wrap">
+        <canvas id="chart-spx30"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ NEWS WIRE -->
+  <div class="panel" id="panel-news">
+    <div class="panel-header">
+      <span class="panel-title">News Wire</span>
+      <span class="panel-badge badge-loading" id="badge-news">LOADING</span>
+      <span class="panel-subtitle">LIVE RSS FEEDS</span>
+    </div>
+    <div class="news-filters" id="news-filters">
+      <button class="filter-btn active" data-cat="all">ALL</button>
+      <button class="filter-btn" data-cat="markets">MARKETS</button>
+      <button class="filter-btn" data-cat="crypto">CRYPTO</button>
+      <button class="filter-btn" data-cat="fintech">FINTECH</button>
+      <button class="filter-btn" data-cat="gcc">GCC</button>
+    </div>
+    <div class="panel-body" id="news-body">
+      <div class="loading-placeholder">FETCHING NEWS FEEDS...</div>
+    </div>
+  </div>
+
+  <!-- ④ CRYPTO TRACKER -->
+  <div class="panel" id="panel-crypto">
+    <div class="panel-header">
+      <span class="panel-title">Crypto Tracker</span>
+      <span class="panel-badge badge-loading" id="badge-crypto">LOADING</span>
+      <span class="panel-subtitle">COINGECKO LIVE</span>
+    </div>
+    <div class="panel-body" id="crypto-body">
+      <div class="loading-placeholder">LOADING CRYPTO DATA...</div>
+    </div>
+  </div>
+
+  <!-- ⑤ FX & COMMODITIES -->
+  <div class="panel" id="panel-fx">
+    <div class="panel-header">
+      <span class="panel-title">FX & Commodities</span>
+      <span class="panel-badge badge-loading" id="badge-fx">LOADING</span>
+    </div>
+    <div class="panel-body">
+      <table class="data-table">
+        <thead><tr>
+          <th>PAIR</th>
+          <th>RATE</th>
+          <th>24H CHG</th>
+          <th>TREND</th>
+          <th>NOTE</th>
+        </tr></thead>
+        <tbody id="fx-full-body">
+          <tr><td colspan="5" class="loading-placeholder">LOADING FX...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ⑥ BONDS & RATES -->
+  <div class="panel" id="panel-bonds">
+    <div class="panel-header">
+      <span class="panel-title">Bonds & Rates</span>
+      <span class="panel-badge badge-loading" id="badge-bonds">LOADING</span>
+      <span class="panel-subtitle">YIELD CURVE</span>
+    </div>
+    <div class="panel-body" style="display:flex;flex-direction:column;">
+      <table class="data-table">
+        <thead><tr>
+          <th>INSTRUMENT</th>
+          <th>YIELD / RATE</th>
+          <th>CHG (BPS)</th>
+          <th>STATUS</th>
+        </tr></thead>
+        <tbody id="bonds-body">
+          <tr><td colspan="4" class="loading-placeholder">LOADING BONDS...</td></tr>
+        </tbody>
+      </table>
+      <div class="yield-chart-wrap">
+        <canvas id="chart-yield-curve"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#main -->
+
+<!-- ============================================================
+     STATUS BAR
+     ============================================================ -->
+<div id="status-bar">
+  <div class="status-item">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-source">INITIALIZING</span>
+  </div>
+  <div class="status-item">LAST REFRESH: <span id="status-refresh">—</span></div>
+  <div class="status-item">NEXT REFRESH: <span id="status-next">—</span></div>
+  <div class="status-spacer"></div>
+  <div class="status-item">DUBAI (UTC+4): <span id="status-dubai-clock">—</span></div>
+  <div class="status-item">SOURCES: <span>Yahoo Finance · CoinGecko · FRED · RSS</span></div>
+</div>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+/* ============================================================
+   CONFIG — lines 1-30 of script
+   ============================================================ */
+const CONFIG = {
+  FRED_API_KEY: 'f7757be09cdf4a0f11d8632d619bc2b3', // free at fred.stlouisfed.org
+  DEFAULT_WATCHLIST: ['NVDA', 'MA', 'VUG', 'MSTY', 'GEV', 'BTC', 'ETH', 'USDC'],
+  CRYPTO_IDS: ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'usd-coin', 'tether'],
+  PRICE_REFRESH_INTERVAL: 60000,
+  NEWS_REFRESH_INTERVAL: 300000,
+  TIMEZONE: 'Asia/Dubai',
+  AED_RATE: 3.6725,
+  CORS_PROXY: 'https://corsproxy.io/?',
+  RSS_FEEDS: [
+    { url: 'https://feeds.reuters.com/reuters/businessNews', name: 'Reuters', category: 'markets' },
+    { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', name: 'CoinDesk', category: 'crypto' },
+    { url: 'https://www.pymnts.com/feed/', name: 'PYMNTS', category: 'fintech' },
+    { url: 'https://www.finextra.com/rss/headlines.aspx', name: 'Finextra', category: 'fintech' },
+    { url: 'https://www.khaleejtimes.com/rss/business', name: 'Khaleej Times', category: 'gcc' },
+  ]
+};
+
+/* ============================================================
+   CRYPTO TICKER MAP
+   ============================================================ */
+const CRYPTO_TICKER_MAP = {
+  'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana',
+  'BNB': 'binancecoin', 'USDC': 'usd-coin', 'USDT': 'tether',
+  'XRP': 'ripple', 'ADA': 'cardano', 'DOGE': 'dogecoin',
+  'AVAX': 'avalanche-2', 'LINK': 'chainlink',
+};
+
+/* ============================================================
+   GLOBAL STATE
+   ============================================================ */
+const state = {
+  watchlist: [],
+  cryptoData: [],    // CoinGecko markets data
+  fxData: {},        // open.er-api rates
+  newsItems: [],     // all news
+  macroData: {},     // macro tile values
+  bondsData: {},     // FRED bond yields
+  yahooQuotes: {},   // Yahoo Finance quotes keyed by symbol
+  lastRefresh: null,
+  nextRefresh: null,
+  activeView: 'markets',
+  newsFilter: 'all',
+  newsSearch: '',
+  refreshTimer: null,
+};
+
+/* ============================================================
+   CHART REGISTRY
+   ============================================================ */
+const charts = {};
+function destroyChart(id) {
+  if (charts[id]) { try { charts[id].destroy(); } catch(e){} delete charts[id]; }
+}
+
+/* ============================================================
+   UTILITY FUNCTIONS
+   ============================================================ */
+function fmt(n, decimals = 2) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function fmtBig(n) {
+  if (n == null || isNaN(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+  if (abs >= 1e9)  return (n / 1e9).toFixed(2) + 'B';
+  if (abs >= 1e6)  return (n / 1e6).toFixed(2) + 'M';
+  return fmt(n, 0);
+}
+function fmtPct(n, decimals = 2) {
+  if (n == null || isNaN(n)) return '—';
+  const sign = n >= 0 ? '+' : '';
+  return sign + Number(n).toFixed(decimals) + '%';
+}
+function pctClass(n) {
+  if (n == null || isNaN(n)) return 'neu';
+  if (n > 0) return 'pos';
+  if (n < 0) return 'neg';
+  return 'neu';
+}
+function arrow(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n > 0) return '▲';
+  if (n < 0) return '▼';
+  return '—';
+}
+function timeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  if (isNaN(then)) return '—';
+  const diff = Math.floor((now - then) / 1000);
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+function getDubaiTime() {
+  return new Date().toLocaleString('en-GB', {
+    timeZone: CONFIG.TIMEZONE,
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  });
+}
+function getDubaiTimeStr(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleString('en-GB', {
+      timeZone: CONFIG.TIMEZONE,
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+      hour12: false
+    });
+  } catch(e) { return '—'; }
+}
+function saveCache(key, data) {
+  try {
+    localStorage.setItem('ft_' + key, JSON.stringify({ ts: Date.now(), data }));
+  } catch(e) {}
+}
+function loadCache(key) {
+  try {
+    const raw = localStorage.getItem('ft_' + key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) { return null; }
+}
+function showLive(badgeId) {
+  const el = document.getElementById(badgeId);
+  if (!el) return;
+  el.className = 'panel-badge badge-live';
+  el.textContent = 'LIVE';
+}
+function showStale(badgeId, ts) {
+  const el = document.getElementById(badgeId);
+  if (!el) return;
+  el.className = 'panel-badge badge-stale';
+  el.textContent = 'STALE';
+}
+function showLoading(badgeId) {
+  const el = document.getElementById(badgeId);
+  if (!el) return;
+  el.className = 'panel-badge badge-loading';
+  el.textContent = 'LOADING';
+}
+function hasFredKey() {
+  return CONFIG.FRED_API_KEY && CONFIG.FRED_API_KEY !== 'YOUR_FRED_API_KEY';
+}
+function isCrypto(sym) {
+  return Object.prototype.hasOwnProperty.call(CRYPTO_TICKER_MAP, sym.toUpperCase());
+}
+function getCryptoId(sym) {
+  return CRYPTO_TICKER_MAP[sym.toUpperCase()] || null;
+}
+
+/* ============================================================
+   CORS PROXY FETCH (Yahoo Finance)
+   ============================================================ */
+async function fetchWithCORSProxy(url, timeout = 8000) {
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  ];
+  for (const proxyUrl of proxies) {
+    try {
+      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(timeout) });
+      if (resp.ok) {
+        const text = await resp.text();
+        return JSON.parse(text);
+      }
+    } catch(e) { /* try next proxy */ }
+  }
+  throw new Error('All CORS proxies failed');
+}
+
+/* ============================================================
+   SPARKLINE CREATION
+   ============================================================ */
+function createSparkline(canvasId, data, colorOverride) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data || data.length < 2) return;
+  const validData = data.filter(v => v != null && !isNaN(v));
+  if (validData.length < 2) return;
+  const isPos = validData[validData.length - 1] >= validData[0];
+  const color = colorOverride || (isPos ? '#2ecc71' : '#e74c3c');
+  destroyChart(canvasId);
+  charts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: validData.map((_, i) => i),
+      datasets: [{
+        data: validData,
+        borderColor: color,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        backgroundColor: color + '20',
+        tension: 0.3
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } }
+    }
+  });
+}
+
+/* ============================================================
+   API: CoinGecko Crypto Data
+   ============================================================ */
+async function fetchCryptoData() {
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${CONFIG.CRYPTO_IDS.join(',')}&sparkline=true&price_change_percentage=24h&order=market_cap_desc&per_page=50`;
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error('CoinGecko error');
+    const data = await resp.json();
+    if (Array.isArray(data) && data.length > 0) {
+      state.cryptoData = data;
+      saveCache('crypto', data);
+      return data;
+    }
+    throw new Error('Empty response');
+  } catch(e) {
+    const cached = loadCache('crypto');
+    if (cached) { state.cryptoData = cached.data; return cached.data; }
+    return [];
+  }
+}
+
+/* ============================================================
+   API: FX Rates
+   ============================================================ */
+async function fetchFXData() {
+  try {
+    const resp = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) throw new Error('FX error');
+    const data = await resp.json();
+    if (data && data.rates) {
+      state.fxData = data.rates;
+      saveCache('fx', data.rates);
+      return data.rates;
+    }
+    throw new Error('No rates');
+  } catch(e) {
+    const cached = loadCache('fx');
+    if (cached) { state.fxData = cached.data; return cached.data; }
+    return {};
+  }
+}
+
+/* ============================================================
+   API: Yahoo Finance Quotes (via CORS proxy)
+   ============================================================ */
+async function fetchYahooQuotes(symbols) {
+  if (!symbols || symbols.length === 0) return {};
+  const symStr = symbols.join(',');
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symStr)}&fields=symbol,shortName,regularMarketPrice,regularMarketChangePercent,regularMarketChange,marketCap,regularMarketVolume,fiftyTwoWeekHigh,fiftyTwoWeekLow,regularMarketDayHigh,regularMarketDayLow`;
+  try {
+    const data = await fetchWithCORSProxy(url);
+    const result = data?.quoteResponse?.result || [];
+    const map = {};
+    result.forEach(q => { map[q.symbol] = q; });
+    Object.assign(state.yahooQuotes, map);
+    saveCache('yahoo_' + symStr.replace(/[^a-zA-Z]/g, '_').substring(0, 40), map);
+    return map;
+  } catch(e) {
+    const cached = loadCache('yahoo_' + symStr.replace(/[^a-zA-Z]/g, '_').substring(0, 40));
+    if (cached) return cached.data;
+    return {};
+  }
+}
+
+/* ============================================================
+   API: Yahoo Finance Chart (sparkline)
+   ============================================================ */
+async function fetchYahooSparkline(symbol, range = '7d', interval = '1d') {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`;
+  try {
+    const data = await fetchWithCORSProxy(url, 8000);
+    const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+    return closes || [];
+  } catch(e) { return []; }
+}
+
+/* ============================================================
+   API: FRED Series
+   ============================================================ */
+async function fetchFREDSeries(seriesId, limit = 35) {
+  if (!hasFredKey()) return null;
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${CONFIG.FRED_API_KEY}&file_type=json&sort_order=desc&limit=${limit}`;
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) throw new Error('FRED error');
+    const data = await resp.json();
+    const obs = data?.observations || [];
+    return obs.filter(o => o.value !== '.').map(o => ({ date: o.date, value: parseFloat(o.value) }));
+  } catch(e) {
+    const cached = loadCache('fred_' + seriesId);
+    if (cached) return cached.data;
+    return null;
+  }
+}
+
+/* ============================================================
+   API: RSS News via corsproxy.io
+   ============================================================ */
+async function fetchRSSFeed(feed) {
+  const proxyUrl = CONFIG.CORS_PROXY + encodeURIComponent(feed.url);
+  try {
+    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error('RSS fetch failed');
+    const text = await resp.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(text, 'text/xml');
+    const items = Array.from(xml.querySelectorAll('item'));
+    return items.slice(0, 20).map(item => ({
+      title: item.querySelector('title')?.textContent?.trim() || '',
+      link: item.querySelector('link')?.textContent?.trim() ||
+            item.querySelector('guid')?.textContent?.trim() || '#',
+      pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
+      source: feed.name,
+      category: feed.category,
+    }));
+  } catch(e) { return []; }
+}
+
+/* ============================================================
+   RENDER: TICKER BAR
+   ============================================================ */
+function buildTickerHTML(items) {
+  return items.map(item => `
+    <div class="ticker-item">
+      <span class="ticker-sym">${item.sym}</span>
+      <span class="ticker-val">${item.val}</span>
+      <span class="ticker-chg ${pctClass(item.chg)}">${fmtPct(item.chg)}</span>
+    </div>
+  `).join('');
+}
+
+async function updateTickerBar() {
+  // Symbols: SPX, NDX, DJI, BTC, ETH, GOLD, BRENT, DXY, USD/AED, 10Y UST
+  const yahooSymbols = ['^GSPC', '^IXIC', '^DJI', '^TNX', 'DX-Y.NYB', 'GC=F', 'BZ=F'];
+  let quotes = {};
+  try {
+    quotes = await fetchYahooQuotes(yahooSymbols);
+  } catch(e) {}
+
+  const getQ = (sym) => quotes[sym] || {};
+  const items = [];
+
+  const spx = getQ('^GSPC');
+  items.push({ sym: 'SPX', val: fmt(spx.regularMarketPrice, 2), chg: spx.regularMarketChangePercent });
+  const ndx = getQ('^IXIC');
+  items.push({ sym: 'NDX', val: fmt(ndx.regularMarketPrice, 2), chg: ndx.regularMarketChangePercent });
+  const dji = getQ('^DJI');
+  items.push({ sym: 'DJI', val: fmt(dji.regularMarketPrice, 0), chg: dji.regularMarketChangePercent });
+
+  // BTC and ETH from crypto data
+  const btcD = state.cryptoData.find(c => c.id === 'bitcoin');
+  const ethD = state.cryptoData.find(c => c.id === 'ethereum');
+  items.push({ sym: 'BTC', val: '$' + fmt(btcD?.current_price, 0), chg: btcD?.price_change_percentage_24h });
+  items.push({ sym: 'ETH', val: '$' + fmt(ethD?.current_price, 2), chg: ethD?.price_change_percentage_24h });
+
+  const gold = getQ('GC=F');
+  items.push({ sym: 'GOLD', val: '$' + fmt(gold.regularMarketPrice, 0), chg: gold.regularMarketChangePercent });
+  const brent = getQ('BZ=F');
+  items.push({ sym: 'BRENT', val: '$' + fmt(brent.regularMarketPrice, 2), chg: brent.regularMarketChangePercent });
+  const dxy = getQ('DX-Y.NYB');
+  items.push({ sym: 'DXY', val: fmt(dxy.regularMarketPrice, 2), chg: dxy.regularMarketChangePercent });
+
+  // USD/AED from FX
+  const aedRate = state.fxData['AED'] || CONFIG.AED_RATE;
+  items.push({ sym: 'USD/AED', val: fmt(aedRate, 4), chg: 0 });
+
+  const tny = getQ('^TNX');
+  items.push({ sym: '10Y UST', val: fmt(tny.regularMarketPrice, 3) + '%', chg: tny.regularMarketChangePercent });
+
+  const html = buildTickerHTML(items);
+  const track = document.getElementById('ticker-track');
+  if (track) track.innerHTML = html + html;
+}
+
+/* ============================================================
+   RENDER: WATCHLIST
+   ============================================================ */
+function getWatchlistSymbols() {
+  return state.watchlist;
+}
+function saveWatchlist() {
+  localStorage.setItem('ft_watchlist', JSON.stringify(state.watchlist));
+}
+function loadWatchlist() {
+  try {
+    const raw = localStorage.getItem('ft_watchlist');
+    if (raw) state.watchlist = JSON.parse(raw);
+    else state.watchlist = [...CONFIG.DEFAULT_WATCHLIST];
+  } catch(e) { state.watchlist = [...CONFIG.DEFAULT_WATCHLIST]; }
+}
+
+async function fetchWatchlistData() {
+  const equitySyms = state.watchlist.filter(s => !isCrypto(s));
+  const cryptoSyms = state.watchlist.filter(s => isCrypto(s));
+  // Fetch equity quotes
+  if (equitySyms.length > 0) {
+    await fetchYahooQuotes(equitySyms);
+  }
+  // Crypto uses state.cryptoData (already fetched)
+}
+
+function getCryptoByTicker(sym) {
+  const id = getCryptoId(sym);
+  if (!id) return null;
+  return state.cryptoData.find(c => c.id === id) || null;
+}
+
+function renderWatchlist(bodyId, badgeId) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+
+  if (state.watchlist.length === 0) {
+    body.innerHTML = '<div class="no-data">NO SYMBOLS — ADD ONE ABOVE</div>';
+    showLive(badgeId);
+    return;
+  }
+
+  let html = `<table class="data-table" style="width:100%;">
+    <thead><tr>
+      <th>SYMBOL</th>
+      <th>NAME</th>
+      <th>PRICE</th>
+      <th>24H %</th>
+      <th>7D</th>
+      <th></th>
+    </tr></thead>
+    <tbody>`;
+
+  state.watchlist.forEach((sym, idx) => {
+    const crypto = getCryptoByTicker(sym);
+    let price, chgPct, name, rowId;
+    const detailId = `detail-${bodyId}-${idx}`;
+    const canvasId = `spark-${bodyId}-${idx}`;
+
+    if (crypto) {
+      price = crypto.current_price;
+      chgPct = crypto.price_change_percentage_24h;
+      name = crypto.name;
+    } else {
+      const q = state.yahooQuotes[sym] || {};
+      price = q.regularMarketPrice;
+      chgPct = q.regularMarketChangePercent;
+      name = q.shortName || sym;
+    }
+
+    const cls = pctClass(chgPct);
+    const priceStr = price != null ? (price >= 1000 ? '$' + fmt(price, 0) : '$' + fmt(price, price < 1 ? 4 : 2)) : '—';
+
+    html += `
+      <tr class="watchlist-row" onclick="toggleDetail('${detailId}')">
+        <td class="sym-cell">${sym}</td>
+        <td class="name-cell" title="${name}">${name ? name.substring(0, 18) : '—'}</td>
+        <td class="price-cell">${priceStr}</td>
+        <td class="chg-cell ${cls}">${fmtPct(chgPct)}</td>
+        <td><canvas id="${canvasId}" width="80" height="28"></canvas></td>
+        <td><button class="btn-remove" onclick="event.stopPropagation();removeFromWatchlist('${sym}')">×</button></td>
+      </tr>
+      <tr class="detail-row" id="${detailId}">
+        <td colspan="6" style="padding:0;">
+          ${renderDetailCard(sym, crypto, idx)}
+        </td>
+      </tr>`;
+  });
+
+  html += '</tbody></table>';
+  body.innerHTML = html;
+
+  // Draw sparklines after DOM update
+  requestAnimationFrame(() => {
+    state.watchlist.forEach((sym, idx) => {
+      const canvasId = `spark-${bodyId}-${idx}`;
+      const crypto = getCryptoByTicker(sym);
+      if (crypto && crypto.sparkline_in_7d && crypto.sparkline_in_7d.price) {
+        createSparkline(canvasId, crypto.sparkline_in_7d.price);
+      } else {
+        // Fetch Yahoo sparkline async
+        fetchYahooSparkline(sym, '7d', '1d').then(data => {
+          createSparkline(canvasId, data);
+        });
+      }
+    });
+  });
+
+  showLive(badgeId);
+}
+
+function renderDetailCard(sym, crypto, idx) {
+  let mc, vol, hi52, lo52, dayHi, dayLo;
+  if (crypto) {
+    mc = fmtBig(crypto.market_cap);
+    vol = fmtBig(crypto.total_volume);
+    hi52 = crypto.ath ? ('$' + fmt(crypto.ath, crypto.ath < 1 ? 4 : 2)) : '—';
+    lo52 = crypto.atl ? ('$' + fmt(crypto.atl, crypto.atl < 0.01 ? 6 : 2)) : '—';
+    dayHi = crypto.high_24h ? ('$' + fmt(crypto.high_24h, crypto.high_24h < 1 ? 4 : 2)) : '—';
+    dayLo = crypto.low_24h ? ('$' + fmt(crypto.low_24h, crypto.low_24h < 1 ? 4 : 2)) : '—';
+  } else {
+    const q = state.yahooQuotes[sym] || {};
+    mc = fmtBig(q.marketCap);
+    vol = fmtBig(q.regularMarketVolume);
+    hi52 = q.fiftyTwoWeekHigh ? ('$' + fmt(q.fiftyTwoWeekHigh)) : '—';
+    lo52 = q.fiftyTwoWeekLow ? ('$' + fmt(q.fiftyTwoWeekLow)) : '—';
+    dayHi = q.regularMarketDayHigh ? ('$' + fmt(q.regularMarketDayHigh)) : '—';
+    dayLo = q.regularMarketDayLow ? ('$' + fmt(q.regularMarketDayLow)) : '—';
+  }
+  return `<div class="detail-card">
+    <div class="detail-item"><label>Market Cap</label><span>${mc}</span></div>
+    <div class="detail-item"><label>Volume 24H</label><span>${vol}</span></div>
+    <div class="detail-item"><label>52W High</label><span>${hi52}</span></div>
+    <div class="detail-item"><label>52W Low</label><span>${lo52}</span></div>
+    <div class="detail-item"><label>Day High</label><span>${dayHi}</span></div>
+    <div class="detail-item"><label>Day Low</label><span>${dayLo}</span></div>
+  </div>`;
+}
+
+function toggleDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('open');
+}
+
+function addToWatchlist(sym) {
+  sym = sym.trim().toUpperCase();
+  if (!sym) return;
+  if (state.watchlist.includes(sym)) return;
+  state.watchlist.push(sym);
+  saveWatchlist();
+  fetchWatchlistData().then(() => {
+    renderWatchlist('watchlist-body', 'badge-watchlist');
+    renderWatchlist('watchlist-body2', 'badge-watchlist2');
+  });
+}
+
+function removeFromWatchlist(sym) {
+  state.watchlist = state.watchlist.filter(s => s !== sym);
+  saveWatchlist();
+  renderWatchlist('watchlist-body', 'badge-watchlist');
+  renderWatchlist('watchlist-body2', 'badge-watchlist2');
+}
+
+/* ============================================================
+   RENDER: MACRO DASHBOARD
+   ============================================================ */
+async function fetchAndRenderMacro() {
+  showLoading('badge-macro');
+  // Fetch Yahoo quotes for macro symbols
+  const macroSyms = ['^GSPC', '^VIX', 'DX-Y.NYB', '^TNX'];
+  let quotes = {};
+  try { quotes = await fetchYahooQuotes(macroSyms); } catch(e) {}
+
+  // FRED: Fed Funds and CPI
+  let fedFunds = null, cpi = null;
+  if (hasFredKey()) {
+    const [fedData, cpiData] = await Promise.allSettled([
+      fetchFREDSeries('FEDFUNDS', 2),
+      fetchFREDSeries('CPIAUCSL', 14),
+    ]);
+    if (fedData.status === 'fulfilled' && fedData.value) {
+      fedFunds = fedData.value[0]?.value;
+      saveCache('fred_FEDFUNDS', fedData.value);
+    }
+    if (cpiData.status === 'fulfilled' && cpiData.value && cpiData.value.length >= 13) {
+      const arr = cpiData.value;
+      // YoY = (latest / 12moAgo - 1) * 100
+      cpi = ((arr[0].value / arr[12].value) - 1) * 100;
+      saveCache('fred_CPIAUCSL', cpiData.value);
+    }
+  } else {
+    // Try cache
+    const cachedFed = loadCache('fred_FEDFUNDS');
+    const cachedCpi = loadCache('fred_CPIAUCSL');
+    if (cachedFed) fedFunds = cachedFed.data[0]?.value;
+    if (cachedCpi && cachedCpi.data.length >= 13) {
+      const arr = cachedCpi.data;
+      cpi = ((arr[0].value / arr[12].value) - 1) * 100;
+    }
+  }
+
+  // Render tiles
+  renderMacroTile('tile-spx', 'S&P 500', quotes['^GSPC']?.regularMarketPrice, quotes['^GSPC']?.regularMarketChangePercent, null, false, 0);
+  renderMacroTile('tile-vix', 'VIX', quotes['^VIX']?.regularMarketPrice, quotes['^VIX']?.regularMarketChangePercent, getVIXStatus(quotes['^VIX']?.regularMarketPrice), true, 2);
+  renderMacroTile('tile-dxy', 'DXY', quotes['DX-Y.NYB']?.regularMarketPrice, quotes['DX-Y.NYB']?.regularMarketChangePercent, null, false, 3);
+  renderMacroTile('tile-10y', '10Y UST', quotes['^TNX']?.regularMarketPrice, quotes['^TNX']?.regularMarketChangePercent, null, false, 3, '%');
+  renderFedTile('tile-fed', fedFunds);
+  renderCPITile('tile-cpi', cpi);
+
+  // SPX 30-day sparkline
+  fetchSPX30Chart();
+  showLive('badge-macro');
+}
+
+function renderMacroTile(id, label, value, chgPct, status, colored, decimals = 2, suffix = '') {
+  const tile = document.getElementById(id);
+  if (!tile) return;
+  tile.querySelector('.tile-label').textContent = label;
+  tile.querySelector('.tile-value').textContent = value != null ? fmt(value, decimals) + suffix : '—';
+  const chgEl = tile.querySelector('.tile-change');
+  chgEl.textContent = chgPct != null ? fmtPct(chgPct) : '—';
+  chgEl.className = 'tile-change ' + pctClass(chgPct);
+  const statusEl = tile.querySelector('.tile-status');
+  if (statusEl) statusEl.textContent = status || '';
+  // Color-coded border
+  tile.classList.remove('border-pos', 'border-neg', 'border-warn');
+  if (colored && value != null) {
+    if (label === 'VIX' && value > 25) tile.classList.add('border-neg');
+    else if (chgPct > 0) tile.classList.add('border-pos');
+    else if (chgPct < 0) tile.classList.add('border-neg');
+  } else if (chgPct > 0) tile.classList.add('border-pos');
+  else if (chgPct < 0) tile.classList.add('border-neg');
+}
+
+function getVIXStatus(vix) {
+  if (!vix) return '—';
+  if (vix > 30) return 'HIGH STRESS';
+  if (vix > 25) return 'ELEVATED';
+  if (vix > 15) return 'NORMAL';
+  return 'LOW VOL';
+}
+
+function renderFedTile(id, val) {
+  const tile = document.getElementById(id);
+  if (!tile) return;
+  tile.querySelector('.tile-label').textContent = 'Fed Funds';
+  tile.classList.remove('border-pos', 'border-neg', 'border-warn');
+  if (val != null) {
+    tile.querySelector('.tile-value').textContent = fmt(val, 2) + '%';
+    const chgEl = tile.querySelector('.tile-change');
+    chgEl.textContent = val > 4.5 ? 'RESTRICTIVE' : 'ACCOMMODATIVE';
+    chgEl.className = 'tile-change ' + (val > 4.5 ? 'neg' : 'pos');
+    const statusEl = tile.querySelector('.tile-status');
+    if (statusEl) statusEl.textContent = val > 4.5 ? 'Above 4.5% threshold' : '';
+    if (val > 4.5) tile.classList.add('border-neg');
+    else tile.classList.add('border-pos');
+  } else {
+    tile.querySelector('.tile-value').textContent = hasFredKey() ? '—' : 'ADD KEY';
+    tile.querySelector('.tile-change').textContent = hasFredKey() ? '—' : 'FRED Required';
+    tile.querySelector('.tile-change').className = 'tile-change neu';
+  }
+}
+
+function renderCPITile(id, val) {
+  const tile = document.getElementById(id);
+  if (!tile) return;
+  tile.querySelector('.tile-label').textContent = 'US CPI YoY';
+  tile.classList.remove('border-pos', 'border-neg', 'border-warn');
+  if (val != null) {
+    tile.querySelector('.tile-value').textContent = fmt(val, 2) + '%';
+    const chgEl = tile.querySelector('.tile-change');
+    chgEl.textContent = val > 3 ? 'ABOVE TARGET' : val > 2 ? 'NEAR TARGET' : 'BELOW TARGET';
+    chgEl.className = 'tile-change ' + (val > 3 ? 'neg' : val > 2 ? 'neu' : 'pos');
+    const statusEl = tile.querySelector('.tile-status');
+    if (statusEl) statusEl.textContent = val > 3 ? 'Fed 2% target exceeded' : '';
+    if (val > 3) tile.classList.add('border-neg');
+    else if (val > 2) tile.classList.add('border-warn');
+    else tile.classList.add('border-pos');
+  } else {
+    tile.querySelector('.tile-value').textContent = hasFredKey() ? '—' : 'ADD KEY';
+    tile.querySelector('.tile-change').textContent = hasFredKey() ? '—' : 'FRED Required';
+    tile.querySelector('.tile-change').className = 'tile-change neu';
+  }
+}
+
+async function fetchSPX30Chart() {
+  try {
+    const data = await fetchWithCORSProxy(
+      'https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=1mo', 8000
+    );
+    const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+    const timestamps = data?.chart?.result?.[0]?.timestamp || [];
+    if (closes.length < 2) return;
+    const canvas = document.getElementById('chart-spx30');
+    if (!canvas) return;
+    const validCloses = closes.filter(v => v != null);
+    const isPos = validCloses[validCloses.length - 1] >= validCloses[0];
+    const color = isPos ? '#2ecc71' : '#e74c3c';
+    destroyChart('chart-spx30');
+    charts['chart-spx30'] = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: timestamps.map(ts => new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+        datasets: [{
+          label: 'S&P 500',
+          data: closes,
+          borderColor: color,
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true,
+          backgroundColor: color + '15',
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            backgroundColor: '#0d1220',
+            borderColor: '#1e2535',
+            borderWidth: 1,
+            titleColor: '#4a9eff',
+            bodyColor: '#c5c9d0',
+            callbacks: {
+              label: ctx => ' SPX: $' + fmt(ctx.raw, 2)
+            }
+          }
+        },
+        scales: {
+          x: {
+            display: true,
+            ticks: { color: '#666b78', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 8, maxRotation: 0 },
+            grid: { color: '#1e2535', lineWidth: 0.5 }
+          },
+          y: {
+            display: true,
+            position: 'right',
+            ticks: { color: '#666b78', font: { family: 'JetBrains Mono', size: 9 }, callback: v => '$' + fmt(v, 0) },
+            grid: { color: '#1e2535', lineWidth: 0.5 }
+          }
+        }
+      }
+    });
+  } catch(e) {}
+}
+
+/* ============================================================
+   RENDER: FX PANEL
+   ============================================================ */
+async function fetchAndRenderFX() {
+  showLoading('badge-fx');
+  showLoading('badge-fx-summary');
+
+  // FX pairs using state.fxData (already fetched)
+  const pairs = [
+    { label: 'USD/AED', base: 'AED', note: 'PEGGED', pegged: true },
+    { label: 'EUR/USD', base: 'EUR', invert: true },
+    { label: 'GBP/USD', base: 'GBP', invert: true },
+    { label: 'USD/SAR', base: 'SAR' },
+    { label: 'USD/EGP', base: 'EGP' },
+    { label: 'USD/INR', base: 'INR' },
+  ];
+
+  // Commodities from Yahoo
+  let commoData = {};
+  try {
+    commoData = await fetchYahooQuotes(['GC=F', 'BZ=F']);
+  } catch(e) {}
+
+  const fxRows = pairs.map(p => {
+    let rate;
+    if (p.invert) {
+      rate = state.fxData[p.base] ? 1 / state.fxData[p.base] : null;
+    } else {
+      rate = state.fxData[p.base] || null;
+    }
+    const arrowStr = p.pegged ? '—' : (rate ? '▲' : '—'); // FX API doesn't give 24h chg
+    return `<tr>
+      <td style="font-weight:600;">${p.label}</td>
+      <td>${rate != null ? fmt(rate, 4) : '—'}</td>
+      <td class="neu">—</td>
+      <td class="neu">${arrowStr}</td>
+      ${p.note !== undefined ? `<td><span class="pegged-badge">${p.note}</span></td>` : '<td></td>'}
+    </tr>`;
+  }).join('');
+
+  const gold = commoData['GC=F'] || {};
+  const brent = commoData['BZ=F'] || {};
+
+  const commoRows = [
+    { label: 'GOLD (XAU/USD)', q: gold, suffix: '$', dec: 0 },
+    { label: 'BRENT CRUDE', q: brent, suffix: '$', dec: 2 },
+  ].map(c => {
+    const chg = c.q.regularMarketChangePercent;
+    return `<tr>
+      <td style="font-weight:600;">${c.label}</td>
+      <td>${c.q.regularMarketPrice != null ? c.suffix + fmt(c.q.regularMarketPrice, c.dec) : '—'}</td>
+      <td class="${pctClass(chg)}">${fmtPct(chg)}</td>
+      <td class="${pctClass(chg)}">${arrow(chg)}</td>
+      <td></td>
+    </tr>`;
+  }).join('');
+
+  const fullBody = document.getElementById('fx-full-body');
+  if (fullBody) {
+    fullBody.innerHTML = fxRows + `<tr><td colspan="5" style="padding:4px 10px;background:var(--header-bg);font-size:9px;color:var(--muted);letter-spacing:1px;">COMMODITIES</td></tr>` + commoRows;
+  }
+
+  // Summary table (in markets view)
+  const summaryPairs = [
+    { label: 'USD/AED', rate: state.fxData['AED'], chg: 0, pegged: true },
+    { label: 'EUR/USD', rate: state.fxData['EUR'] ? 1/state.fxData['EUR'] : null, chg: null },
+    { label: 'GBP/USD', rate: state.fxData['GBP'] ? 1/state.fxData['GBP'] : null, chg: null },
+    { label: 'USD/INR', rate: state.fxData['INR'], chg: null },
+    { label: 'GOLD', rate: gold.regularMarketPrice, chg: gold.regularMarketChangePercent },
+    { label: 'BRENT', rate: brent.regularMarketPrice, chg: brent.regularMarketChangePercent },
+  ];
+
+  const summaryBody = document.getElementById('fx-summary-body');
+  if (summaryBody) {
+    summaryBody.innerHTML = summaryPairs.map(p => `
+      <tr>
+        <td style="font-weight:600;">${p.label}</td>
+        <td>${p.rate != null ? fmt(p.rate, p.label.includes('GOLD') || p.label.includes('BRENT') ? 2 : 4) : '—'}</td>
+        <td class="${pctClass(p.chg)}">${p.pegged ? '<span class="pegged-badge">PEG</span>' : fmtPct(p.chg)}</td>
+        <td class="${pctClass(p.chg)}">${p.pegged ? '—' : arrow(p.chg)}</td>
+      </tr>`).join('');
+  }
+
+  showLive('badge-fx');
+  showLive('badge-fx-summary');
+}
+
+/* ============================================================
+   RENDER: CRYPTO PANEL
+   ============================================================ */
+function renderCryptoPanel() {
+  showLoading('badge-crypto');
+  const body = document.getElementById('crypto-body');
+  if (!body) return;
+
+  if (!state.cryptoData || state.cryptoData.length === 0) {
+    body.innerHTML = '<div class="no-data">CRYPTO DATA UNAVAILABLE</div>';
+    showStale('badge-crypto');
+    return;
+  }
+
+  const mainCoins = ['bitcoin', 'ethereum', 'solana', 'binancecoin'];
+  const stableCoins = ['usd-coin', 'tether'];
+
+  const main = state.cryptoData.filter(c => mainCoins.includes(c.id));
+  const stables = state.cryptoData.filter(c => stableCoins.includes(c.id));
+
+  let html = `<div class="crypto-section-header">MAJOR CRYPTOCURRENCIES</div>
+  <table class="data-table">
+    <thead><tr>
+      <th>#</th>
+      <th>ASSET</th>
+      <th>PRICE (USD)</th>
+      <th>PRICE (AED)</th>
+      <th>24H %</th>
+      <th>MARKET CAP</th>
+      <th>7D CHART</th>
+    </tr></thead>
+    <tbody>`;
+
+  main.forEach((coin, i) => {
+    const chg = coin.price_change_percentage_24h;
+    const cls = pctClass(chg);
+    const priceAED = coin.current_price * CONFIG.AED_RATE;
+    const canvasId = `crypto-spark-${i}`;
+    html += `<tr>
+      <td style="color:var(--muted);">${i + 1}</td>
+      <td>
+        <div style="font-weight:700;font-size:11px;">${coin.symbol.toUpperCase()}</div>
+        <div style="color:var(--muted);font-size:10px;">${coin.name}</div>
+      </td>
+      <td style="font-weight:600;">$${fmt(coin.current_price, coin.current_price < 1 ? 4 : 2)}</td>
+      <td style="color:var(--muted);">AED ${fmt(priceAED, priceAED < 1 ? 4 : 2)}</td>
+      <td class="${cls}">${fmtPct(chg)}</td>
+      <td>${fmtBig(coin.market_cap)}</td>
+      <td><canvas id="${canvasId}" width="80" height="28"></canvas></td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>
+  <div class="crypto-section-header" style="margin-top:1px;">STABLECOINS — PEG MONITOR</div>
+  <table class="data-table">
+    <thead><tr>
+      <th>ASSET</th>
+      <th>PRICE (USD)</th>
+      <th>DEVIATION</th>
+      <th>PEG STATUS</th>
+      <th>MARKET CAP</th>
+      <th>24H VOL</th>
+    </tr></thead>
+    <tbody>`;
+
+  stables.forEach(coin => {
+    const dev = coin.current_price - 1.0;
+    const devPct = dev * 100;
+    const isPegged = Math.abs(dev) < 0.005;
+    html += `<tr>
+      <td>
+        <div style="font-weight:700;">${coin.symbol.toUpperCase()}</div>
+        <div style="color:var(--muted);font-size:10px;">${coin.name}</div>
+      </td>
+      <td>$${fmt(coin.current_price, 4)}</td>
+      <td class="${Math.abs(devPct) > 0.5 ? 'neg' : 'pos'}">${dev >= 0 ? '+' : ''}${fmt(dev, 4)} (${fmtPct(devPct)})</td>
+      <td><span class="peg-badge ${isPegged ? 'peg-ok' : 'peg-warn'}">${isPegged ? 'PEG HELD' : 'DEPEGGED'}</span></td>
+      <td>${fmtBig(coin.market_cap)}</td>
+      <td>${fmtBig(coin.total_volume)}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  body.innerHTML = html;
+
+  // Draw sparklines
+  requestAnimationFrame(() => {
+    main.forEach((coin, i) => {
+      const canvasId = `crypto-spark-${i}`;
+      const sparkData = coin.sparkline_in_7d?.price;
+      if (sparkData && sparkData.length > 1) {
+        createSparkline(canvasId, sparkData);
+      }
+    });
+  });
+
+  showLive('badge-crypto');
+}
+
+/* ============================================================
+   RENDER: BONDS & RATES
+   ============================================================ */
+async function fetchAndRenderBonds() {
+  showLoading('badge-bonds');
+  const body = document.getElementById('bonds-body');
+  if (!body) return;
+
+  let fedFunds = null, dgs2 = null, dgs5 = null, dgs10 = null, dgs30 = null;
+
+  if (hasFredKey()) {
+    const series = ['FEDFUNDS', 'DGS2', 'DGS5', 'DGS10', 'DGS30'];
+    const results = await Promise.allSettled(series.map(s => fetchFREDSeries(s, 2)));
+    fedFunds = results[0].value?.[0]?.value;
+    dgs2     = results[1].value?.[0]?.value;
+    dgs5     = results[2].value?.[0]?.value;
+    dgs10    = results[3].value?.[0]?.value;
+    dgs30    = results[4].value?.[0]?.value;
+    // Cache
+    series.forEach((s, i) => {
+      if (results[i].value) saveCache('fred_' + s, results[i].value);
+    });
+  } else {
+    // Try cache
+    const keys = ['FEDFUNDS', 'DGS2', 'DGS5', 'DGS10', 'DGS30'];
+    const vals = keys.map(k => { const c = loadCache('fred_' + k); return c?.data?.[0]?.value; });
+    [fedFunds, dgs2, dgs5, dgs10, dgs30] = vals;
+
+    // Fallback: Yahoo ^TNX for 10Y
+    if (!dgs10) {
+      const q = state.yahooQuotes['^TNX'];
+      if (q) dgs10 = q.regularMarketPrice;
+    }
+  }
+
+  const spread = (dgs10 != null && dgs2 != null) ? (dgs10 - dgs2) : null;
+  const spreadInverted = spread != null && spread < 0;
+
+  const rows = [
+    { label: 'Fed Funds Target', val: fedFunds, suffix: '%', bps: null },
+    { label: 'US 2Y Yield', val: dgs2, suffix: '%', bps: null },
+    { label: 'US 5Y Yield', val: dgs5, suffix: '%', bps: null },
+    { label: 'US 10Y Yield', val: dgs10, suffix: '%', bps: null },
+    { label: 'US 30Y Yield', val: dgs30, suffix: '%', bps: null },
+    { label: '2s10s Spread', val: spread, suffix: ' bps', bps: true },
+  ];
+
+  body.innerHTML = rows.map(r => {
+    const displayVal = r.bps ? (r.val != null ? fmt(r.val * 100, 1) + r.suffix : '—') : (r.val != null ? fmt(r.val, 2) + r.suffix : (hasFredKey() ? '—' : 'ADD FRED KEY'));
+    let statusHtml = '';
+    if (r.label === '2s10s Spread' && spread != null) {
+      statusHtml = `<span class="spread-indicator ${spreadInverted ? 'spread-inverted' : 'spread-normal'}">${spreadInverted ? 'INVERTED' : 'NORMAL'}</span>`;
+    } else if (r.val != null) {
+      statusHtml = `<span style="color:var(--muted);font-size:9px;">${r.val > 5 ? 'ELEVATED' : r.val > 3 ? 'NORMAL' : 'LOW'}</span>`;
+    }
+    return `<tr>
+      <td style="font-weight:600;">${r.label}</td>
+      <td style="color:${r.bps && spreadInverted ? 'var(--neg)' : 'var(--text)'};">${displayVal}</td>
+      <td class="neu">—</td>
+      <td>${statusHtml}</td>
+    </tr>`;
+  }).join('');
+
+  // Yield curve chart
+  renderYieldCurve();
+  showLive('badge-bonds');
+}
+
+async function renderYieldCurve() {
+  const canvas = document.getElementById('chart-yield-curve');
+  if (!canvas) return;
+
+  if (!hasFredKey()) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.parentElement.innerHTML = `<div class="fred-notice">
+      <strong style="color:var(--accent);">YIELD CURVE CHART</strong><br>
+      Add your FRED API key to CONFIG.FRED_API_KEY to display the yield curve.<br>
+      Free at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank">fred.stlouisfed.org</a>
+    </div>`;
+    return;
+  }
+
+  const curveSeriesIds = ['DGS1MO','DGS3MO','DGS6MO','DGS1','DGS2','DGS3','DGS5','DGS7','DGS10','DGS20','DGS30'];
+  const labels = ['1M','3M','6M','1Y','2Y','3Y','5Y','7Y','10Y','20Y','30Y'];
+
+  const results = await Promise.allSettled(curveSeriesIds.map(s => fetchFREDSeries(s, 1)));
+  const yields = results.map(r => r.status === 'fulfilled' ? r.value?.[0]?.value : null);
+
+  destroyChart('chart-yield-curve');
+  charts['chart-yield-curve'] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Yield Curve',
+        data: yields,
+        borderColor: '#4a9eff',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: '#4a9eff',
+        fill: true,
+        backgroundColor: '#4a9eff15',
+        tension: 0.3,
+        spanGaps: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0d1220',
+          borderColor: '#1e2535',
+          borderWidth: 1,
+          titleColor: '#4a9eff',
+          bodyColor: '#c5c9d0',
+          callbacks: { label: ctx => ` ${fmt(ctx.raw, 2)}%` }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#666b78', font: { family: 'JetBrains Mono', size: 9 } },
+          grid: { color: '#1e2535', lineWidth: 0.5 }
+        },
+        y: {
+          ticks: { color: '#666b78', font: { family: 'JetBrains Mono', size: 9 }, callback: v => v + '%' },
+          grid: { color: '#1e2535', lineWidth: 0.5 }
+        }
+      }
+    }
+  });
+}
+
+/* ============================================================
+   RENDER: NEWS PANEL
+   ============================================================ */
+async function fetchAndRenderNews() {
+  showLoading('badge-news');
+  showLoading('badge-fintech');
+  showLoading('badge-gcc');
+
+  try {
+    const results = await Promise.allSettled(CONFIG.RSS_FEEDS.map(f => fetchRSSFeed(f)));
+    const allItems = [];
+    results.forEach(r => {
+      if (r.status === 'fulfilled') allItems.push(...r.value);
+    });
+
+    // Sort by date desc
+    allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+    state.newsItems = allItems;
+    saveCache('news', allItems);
+
+    renderNewsPanel('news-body', 'badge-news', state.newsFilter);
+    renderNewsPanel('fintech-body', 'badge-fintech', 'fintech');
+    renderNewsPanel('gcc-body', 'badge-gcc', 'gcc');
+  } catch(e) {
+    const cached = loadCache('news');
+    if (cached) {
+      state.newsItems = cached.data;
+      renderNewsPanel('news-body', 'badge-news', state.newsFilter);
+      renderNewsPanel('fintech-body', 'badge-fintech', 'fintech');
+      renderNewsPanel('gcc-body', 'badge-gcc', 'gcc');
+      showStale('badge-news');
+      showStale('badge-fintech');
+      showStale('badge-gcc');
+    } else {
+      document.getElementById('news-body').innerHTML = '<div class="no-data">NEWS FEEDS UNAVAILABLE</div>';
+      showStale('badge-news');
+    }
+  }
+}
+
+function renderNewsPanel(bodyId, badgeId, filterCat) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+
+  const search = state.newsSearch.toLowerCase();
+  let items = state.newsItems;
+
+  if (filterCat && filterCat !== 'all') {
+    items = items.filter(i => i.category === filterCat);
+  }
+  if (search) {
+    items = items.filter(i => i.title.toLowerCase().includes(search) || i.source.toLowerCase().includes(search));
+  }
+
+  if (items.length === 0) {
+    body.innerHTML = `<div class="no-data">NO NEWS — ${filterCat !== 'all' ? filterCat.toUpperCase() : 'SEARCH'} FILTER ACTIVE</div>`;
+    showLive(badgeId);
+    return;
+  }
+
+  body.innerHTML = items.slice(0, 60).map(item => {
+    const tagCls = `tag-${item.category}`;
+    return `<div class="news-item" onclick="window.open('${item.link}','_blank')">
+      <div class="news-headline">${escapeHtml(item.title)}</div>
+      <div class="news-meta">
+        <span class="news-source-tag ${tagCls}">${item.source}</span>
+        <span class="news-time">${timeAgo(item.pubDate)}</span>
+        <span class="news-dubai-time">${getDubaiTimeStr(item.pubDate)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  showLive(badgeId);
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ============================================================
+   PANEL SCROLL NAVIGATION
+   ============================================================ */
+function scrollToPanel(panelId, filterCat) {
+  const panel = document.getElementById(panelId);
+  if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (filterCat) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    const fb = document.querySelector(`.filter-btn[data-cat="${filterCat}"]`);
+    if (fb) { fb.classList.add('active'); state.newsFilter = filterCat; }
+    renderNewsPanel('news-body', 'badge-news', filterCat);
+  }
+}
+
+/* ============================================================
+   NEWS FILTER BUTTONS
+   ============================================================ */
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.newsFilter = btn.dataset.cat;
+    renderNewsPanel('news-body', 'badge-news', state.newsFilter);
+  });
+});
+
+/* ============================================================
+   SEARCH BAR
+   ============================================================ */
+document.getElementById('news-search').addEventListener('input', e => {
+  state.newsSearch = e.target.value;
+  renderNewsPanel('news-body', 'badge-news', state.newsFilter);
+  if (state.activeView === 'fintech') renderNewsPanel('fintech-body', 'badge-fintech', 'fintech');
+  if (state.activeView === 'gcc') renderNewsPanel('gcc-body', 'badge-gcc', 'gcc');
+});
+
+/* ============================================================
+   WATCHLIST INPUT
+   ============================================================ */
+function setupWatchlistInputs() {
+  const setupPair = (inputId, btnId) => {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    if (!input || !btn) return;
+    btn.addEventListener('click', () => {
+      addToWatchlist(input.value);
+      input.value = '';
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { addToWatchlist(input.value); input.value = ''; }
+    });
+  };
+  setupPair('watchlist-input', 'watchlist-add-btn');
+  setupPair('watchlist-input2', 'watchlist-add-btn2');
+}
+
+/* ============================================================
+   NAV TAB SCROLL-TO
+   ============================================================ */
+document.querySelectorAll('.nav-tab[data-anchor]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    scrollToPanel(btn.dataset.anchor, btn.dataset.filter || null);
+  });
+});
+
+/* ============================================================
+   STATUS BAR CLOCK
+   ============================================================ */
+function updateClock() {
+  const el = document.getElementById('status-dubai-clock');
+  if (el) el.textContent = getDubaiTime();
+}
+
+function updateStatusBar() {
+  const el = document.getElementById('status-refresh');
+  if (el && state.lastRefresh) {
+    el.textContent = state.lastRefresh.toLocaleTimeString('en-GB', { hour12: false });
+  }
+  const next = document.getElementById('status-next');
+  if (next && state.nextRefresh) {
+    const secsLeft = Math.max(0, Math.round((state.nextRefresh - Date.now()) / 1000));
+    next.textContent = secsLeft + 's';
+  }
+  document.getElementById('status-source').textContent = 'LIVE DATA ACTIVE';
+}
+
+/* ============================================================
+   MAIN REFRESH SEQUENCE
+   ============================================================ */
+async function refreshAll() {
+  const btn = document.getElementById('btn-refresh');
+  if (btn) { btn.classList.add('spinning'); btn.textContent = '↻ ...'; }
+
+  try {
+    // Step 1: Fetch crypto and FX in parallel
+    await Promise.allSettled([fetchCryptoData(), fetchFXData()]);
+
+    // Step 2: Fetch watchlist (equities + crypto uses already fetched data)
+    await fetchWatchlistData();
+
+    // Step 3: Fetch macro (Yahoo quotes for macro symbols)
+    const macroFetch = fetchAndRenderMacro();
+
+    // Step 4 & 5: FX and bonds in parallel
+    const fxFetch = fetchAndRenderFX();
+
+    // Step 6: News in parallel
+    const newsFetch = fetchAndRenderNews();
+
+    await Promise.allSettled([macroFetch, fxFetch, newsFetch]);
+
+    // Step 7: Bonds (after macro data available)
+    await fetchAndRenderBonds();
+
+    // Step 8: Render watchlist panels
+    renderWatchlist('watchlist-body', 'badge-watchlist');
+    renderWatchlist('watchlist-body2', 'badge-watchlist2');
+
+    // Crypto panel
+    renderCryptoPanel();
+
+    // Step 9: Update ticker
+    await updateTickerBar();
+
+    // Update state
+    state.lastRefresh = new Date();
+    state.nextRefresh = new Date(Date.now() + CONFIG.PRICE_REFRESH_INTERVAL);
+    updateStatusBar();
+
+  } catch(e) {
+    console.error('Refresh error:', e);
+  } finally {
+    if (btn) { btn.classList.remove('spinning'); btn.textContent = '↻ REFRESH'; }
+  }
+}
+
+/* ============================================================
+   REFRESH BUTTON
+   ============================================================ */
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  clearTimeout(state.refreshTimer);
+  refreshAll().then(scheduleRefresh);
+});
+
+function scheduleRefresh() {
+  clearTimeout(state.refreshTimer);
+  state.nextRefresh = new Date(Date.now() + CONFIG.PRICE_REFRESH_INTERVAL);
+  state.refreshTimer = setTimeout(() => {
+    refreshAll().then(scheduleRefresh);
+  }, CONFIG.PRICE_REFRESH_INTERVAL);
+}
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+async function init() {
+  // Load watchlist from localStorage
+  loadWatchlist();
+
+  // Setup watchlist inputs
+  setupWatchlistInputs();
+
+  // Start clock
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Update status bar countdown every second
+  setInterval(updateStatusBar, 1000);
+
+  // Load cached data immediately (if any) for fast first paint
+  const cachedCrypto = loadCache('crypto');
+  if (cachedCrypto) { state.cryptoData = cachedCrypto.data; }
+  const cachedFX = loadCache('fx');
+  if (cachedFX) { state.fxData = cachedFX.data; }
+  const cachedNews = loadCache('news');
+  if (cachedNews) {
+    state.newsItems = cachedNews.data;
+    renderNewsPanel('news-body', 'badge-news', 'all');
+    renderNewsPanel('fintech-body', 'badge-fintech', 'fintech');
+    renderNewsPanel('gcc-body', 'badge-gcc', 'gcc');
+    showStale('badge-news'); showStale('badge-fintech'); showStale('badge-gcc');
+  }
+
+  // If we have cached crypto, render immediately
+  if (state.cryptoData.length > 0) {
+    renderCryptoPanel();
+    await fetchWatchlistData();
+    renderWatchlist('watchlist-body', 'badge-watchlist');
+    renderWatchlist('watchlist-body2', 'badge-watchlist2');
+  }
+
+  // Full refresh
+  await refreshAll();
+  scheduleRefresh();
+}
+
+// Start app
+init();
+</script>
+</body>
+</html>
